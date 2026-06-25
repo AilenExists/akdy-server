@@ -64,9 +64,3 @@ ktor-server/ktor-server-plugins/ktor-server-openapi/docs
 *.actual.json
 
 *.db
-
-# Frontend (Next.js) 지우지 마 찬우야!!!
-AKDYMall-frontend/.next/
-AKDYMall-frontend/node_modules/
-AKDYMall-frontend/out/
-AKDYMall-frontend/.vercel/

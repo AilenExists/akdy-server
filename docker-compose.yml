@@ -19,7 +19,12 @@ services:
 
   frontend:
     build: ./frontend
+    expose:
+      - "3000"
     container_name: frontend-app
+    depends_on:
+      backend:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped

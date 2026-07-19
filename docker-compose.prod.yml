@@ -1,0 +1,9 @@
+ 
+services:
+  backend:
+    image: ghcr.io/AilenExists/backend:latest
+    build: !reset null
+ 
+  frontend:
+    image: ghcr.io/AilenExists/frontend:latest
+    build: !reset null

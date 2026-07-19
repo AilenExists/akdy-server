@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/alienexists
+  IMAGE_PREFIX: ghcr.io/ailenexists
 
 jobs:
   # ─────────────────────────────────────────────

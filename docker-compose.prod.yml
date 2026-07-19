@@ -1,0 +1,8 @@
+services:
+  backend:
+    image: ghcr.io/<OWNER>/backend:latest
+    build: !reset null
+ 
+  frontend:
+    image: ghcr.io/<OWNER>/frontend:latest
+    build: !reset null

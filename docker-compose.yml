@@ -6,8 +6,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./openresty/nginx.conf:/etc/openresty/nginx.conf:ro
-      - ./openresty/lua:/etc/openresty/lua:ro
+      - ./openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./openresty/lua:/usr/local/openresty/nginx/lua:ro
     depends_on:
       backend:
         condition: service_started

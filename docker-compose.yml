@@ -3,6 +3,7 @@ version: '3.8'
 services:
   openresty:
     image: openresty/openresty:alpine
+    container_name: openresty
     ports:
       - "80:80"
     volumes:
@@ -13,6 +14,10 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      elastic:
+        condition: service_healthy
+      kibana:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped
@@ -90,37 +95,64 @@ services:
       - app-network
     restart: unless-stopped
 
-  elasticsearch:
-    image: elasticsearch:9.4.3
+  elastic:
+    build: ./es
+    container_name: elastic
+    env_file:
+      - .secrets/.env
     environment:
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1500m -Xmx1500m
-      - xpack.security.enabled=false #보안 설정 TODO
-      - bootstrap.memory_lock=true
-    ulimits:
-      memlock: { soft: -1, hard: -1 }
-      nofile: { soft: 65536, hard: 65536 }
-    deploy:
-      resources:
-        limits:
-          memory: 3g
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
     volumes:
+      - ./es/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
       - es_data:/usr/share/elasticsearch/data
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:$$ELASTIC_PASSWORD http://localhost:9200 | grep -q cluster_name"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
     networks:
       - app-network
     restart: unless-stopped
 
   kibana:
     image: kibana:9.4.3
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - SERVER_BASEPATH=/kibana
-      - SERVER_REWRITEBASEPATH=true
+    container_name: kibana
     depends_on:
-      - elasticsearch
+      setup:
+        condition: service_completed_successfully
+    env_file:
+      - .secrets/.env
+    volumes:
+      - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     networks:
       - app-network
     restart: unless-stopped
+
+  setup:
+    image: curlimages/curl:latest
+    container_name: setup
+    env_file:
+      - .secrets/.env
+    depends_on:
+      elastic:
+        condition: service_healthy
+    entrypoint: [""]          # curl entrypoint 무효화
+    command: >
+      sh -c '
+        while true; do
+          resp=$$(curl -s -X POST -u "elastic:$$ELASTIC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            http://elastic:9200/_security/user/kibana_system/_password \
+            -d "{\"password\":\"$$ELASTICSEARCH_PASSWORD\"}");
+          echo "response: $$resp";
+          echo "$$resp" | grep -q "^{}" && break;
+          sleep 5;
+        done;
+        echo "kibana_system password set";
+      '
+    networks:
+      - app-network
 
 networks:
   app-network:

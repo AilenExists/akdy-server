@@ -1,0 +1,6 @@
+server.name: kibana
+server.host: 0.0.0.0
+server.basePath: /kibana        # 프록시 없이 직접 접속이면 이 두 줄 삭제
+server.rewriteBasePath: true
+
+elasticsearch.hosts: ["http://elastic:9200"]

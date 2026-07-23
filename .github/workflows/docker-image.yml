@@ -37,6 +37,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./backend
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/backend:latest
@@ -54,7 +55,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          submodules: recursive
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -69,6 +71,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:latest
@@ -95,7 +98,8 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           source: "docker-compose.yml,docker-compose.prod.yml,openresty/"
           target: ${{ secrets.DEPLOY_PATH }}
-
+          overwrite: true
+          
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:

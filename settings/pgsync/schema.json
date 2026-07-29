@@ -6,7 +6,7 @@
       "table": "product",
       "schema": "public",
       "columns": [
-        "product_id",
+        "id",
         "category_id",
         "name",
         "description",
@@ -25,11 +25,6 @@
         "is_deleted",
         "created_at"
       ],
-      "transform": {
-        "rename": {
-          "product_id": "id"
-        }
-      },
       "children": [
         {
           "table": "product_category",
@@ -42,8 +37,12 @@
             "variant": "object",
             "type": "one_to_one",
             "foreign_key": {
-              "child": ["category_id"],
-              "parent": ["category_id"]
+              "child": [
+                "id"
+              ],
+              "parent": [
+                "category_id"
+              ]
             }
           },
           "transform": {

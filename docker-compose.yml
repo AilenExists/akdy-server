@@ -53,6 +53,8 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       HOST_URL: ${HOST_URL}
     depends_on:
+      setup:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -170,7 +172,9 @@ services:
     environment:
       ELASTIC_PASSWORD: ${ES_PASSWORD:?ES_PASSWORD is not set}
       KIBANA_SYSTEM_PASSWORD: ${KIBANA_ES_PASSWORD:?KIBANA_ES_PASSWORD is not set}
-    entrypoint: [""]          # curl entrypoint 무효화
+      BACKEND_USER: ${ES_BACKEND_USER:?ES_BACKEND_USER is not set}
+      BACKEND_PASSWORD: ${ES_BACKEND_PASSWORD:?ES_BACKEND_PASSWORD is not set}
+    entrypoint: [""]
     command: >
       sh -c '
         echo "Waiting to set kibana_system password...";
@@ -183,6 +187,28 @@ services:
           sleep 5;
         done;
         echo "kibana_system password set";
+
+        echo "Creating backend role...";
+        until resp=$$(curl -s -X PUT -u "elastic:$$ELASTIC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            http://elastic:9200/_security/role/backend_role \
+            -d "{\"indices\":[{\"names\":[\"akdymall-*\"],\"privileges\":[\"create_index\",\"read\",\"write\",\"view_index_metadata\"]}]}") \
+          && echo "$$resp" | grep -q "\"created\""; do
+          echo "retrying role... (response: $$resp)";
+          sleep 5;
+        done;
+        echo "backend role created";
+
+        echo "Creating backend user...";
+        until resp=$$(curl -s -X PUT -u "elastic:$$ELASTIC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "http://elastic:9200/_security/user/$$BACKEND_USER" \
+            -d "{\"password\":\"$$BACKEND_PASSWORD\",\"roles\":[\"backend_role\"]}") \
+          && echo "$$resp" | grep -q "\"created\""; do
+          echo "retrying user... (response: $$resp)";
+          sleep 5;
+        done;
+        echo "backend user created";
       '
     networks:
       - app-network

@@ -8,6 +8,8 @@ up-build:
 	$(COMPOSE) up -d --build
 config:
 	$(COMPOSE) config
+ps:
+	$(COMPOSE) ps
 down:
 	$(COMPOSE) down
 delete:

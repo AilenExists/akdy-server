@@ -1,0 +1,58 @@
+[
+  {
+    "database": "akdymall",
+    "index": "product",
+    "nodes": {
+      "table": "product",
+      "schema": "public",
+      "columns": [
+        "product_id",
+        "category_id",
+        "name",
+        "description",
+        "tags",
+        "badges",
+        "cert_quote",
+        "seller_name",
+        "location",
+        "price",
+        "sale_price",
+        "discount_rate",
+        "images",
+        "rating_sum",
+        "rating_count",
+        "quantity_sum",
+        "is_deleted",
+        "created_at"
+      ],
+      "transform": {
+        "rename": {
+          "product_id": "id"
+        }
+      },
+      "children": [
+        {
+          "table": "product_category",
+          "schema": "public",
+          "columns": [
+            "name"
+          ],
+          "label": "category",
+          "relationship": {
+            "variant": "object",
+            "type": "one_to_one",
+            "foreign_key": {
+              "child": ["category_id"],
+              "parent": ["category_id"]
+            }
+          },
+          "transform": {
+            "rename": {
+              "name": "category_name"
+            }
+          }
+        }
+      ]
+    }
+  }
+]

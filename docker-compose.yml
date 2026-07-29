@@ -3,16 +3,21 @@ version: '3.8'
 services:
   openresty:
     image: openresty/openresty:alpine
+    container_name: openresty
     ports:
       - "80:80"
     volumes:
-      - ./openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-      - ./openresty/lua:/usr/local/openresty/nginx/lua:ro
+      - ./settings/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./settings/openresty/lua:/usr/local/openresty/nginx/lua:ro
     depends_on:
       backend:
         condition: service_started
       redis:
         condition: service_healthy
+      elastic:
+        condition: service_healthy
+      kibana:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped
@@ -34,8 +39,19 @@ services:
     container_name: backend-server
     expose:
       - "8080"
-    env_file:
-      - .secrets/.env
+    environment:
+      POSTGRES_URL: jdbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DATABASE}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      ELASTIC_HOST: ${ES_HOST}
+      ELASTIC_PORT: ${ES_PORT}
+      ELASTIC_ACCESS_USERNAME: ${ES_BACKEND_USER}
+      ELASTIC_ACCESS_PASSWORD: ${ES_BACKEND_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      HOST_URL: ${HOST_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,15 +61,33 @@ services:
       - app-network
     restart: unless-stopped
 
-
   postgres:
     image: postgres:15-alpine
     container_name: postgres-db
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is not set}
+      POSTGRES_DB: ${PG_DATABASE}
     expose:
       - "5432"
-    env_file:
-      - .secrets/.env
-    command: postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c work_mem=8MB -c maintenance_work_mem=64MB
+    command: 
+      - postgres 
+      - -c 
+      - shared_buffers=256MB 
+      - -c 
+      - effective_cache_size=768MB 
+      - -c 
+      - work_mem=8MB 
+      - -c 
+      - maintenance_work_mem=64MB 
+      - -c 
+      - wal_level=logical 
+      - -c 
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
+      - -c
+      - max_slot_wal_keep_size=20GB
     deploy:
       resources:
         limits:
@@ -90,37 +124,93 @@ services:
       - app-network
     restart: unless-stopped
 
-  elasticsearch:
-    image: elasticsearch:9.4.3
+  elastic:
+    build: ./settings/es
+    container_name: elastic
     environment:
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1500m -Xmx1500m
-      - xpack.security.enabled=false #보안 설정 TODO
-      - bootstrap.memory_lock=true
-    ulimits:
-      memlock: { soft: -1, hard: -1 }
-      nofile: { soft: 65536, hard: 65536 }
-    deploy:
-      resources:
-        limits:
-          memory: 3g
+      - ELASTIC_PASSWORD=${ES_PASSWORD}
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
     volumes:
+      - ./settings/es/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
       - es_data:/usr/share/elasticsearch/data
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:$$ELASTIC_PASSWORD http://localhost:9200 | grep -q cluster_name"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
     networks:
       - app-network
     restart: unless-stopped
 
   kibana:
     image: kibana:9.4.3
+    container_name: kibana
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - SERVER_BASEPATH=/kibana
-      - SERVER_REWRITEBASEPATH=true
+      ELASTICSEARCH_HOSTS: http://${ES_HOST}:${ES_PORT}
+      ELASTICSEARCH_USERNAME: ${KIBANA_ES_USER}
+      ELASTICSEARCH_PASSWORD: ${KIBANA_ES_PASSWORD}
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${KIBANA_ENCRYPTION_KEY}
     depends_on:
-      - elasticsearch
+      setup:
+        condition: service_completed_successfully
+    volumes:
+      - ./settings/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     networks:
       - app-network
     restart: unless-stopped
+
+  setup:
+    image: curlimages/curl:latest
+    container_name: setup
+    restart: "no"
+    depends_on:
+      elastic:
+        condition: service_healthy
+    environment:
+      ELASTIC_PASSWORD: ${ES_PASSWORD:?ES_PASSWORD is not set}
+      KIBANA_SYSTEM_PASSWORD: ${KIBANA_ES_PASSWORD:?KIBANA_ES_PASSWORD is not set}
+    entrypoint: [""]          # curl entrypoint 무효화
+    command: >
+      sh -c '
+        echo "Waiting to set kibana_system password...";
+        until resp=$$(curl -s -X POST -u "elastic:$$ELASTIC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            http://elastic:9200/_security/user/kibana_system/_password \
+            -d "{\"password\":\"$$KIBANA_SYSTEM_PASSWORD\"}") \
+          && echo "$$resp" | grep -q "^{}"; do
+          echo "retrying... (response: $$resp)";
+          sleep 5;
+        done;
+        echo "kibana_system password set";
+      '
+    networks:
+      - app-network
+
+  pgsync:
+    build: ./settings/pgsync
+    container_name: pgsync
+    environment:
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      ELASTICSEARCH_HOST: ${ES_HOST}
+      ELASTICSEARCH_PORT: ${ES_PORT}
+      ELASTICSEARCH_USER: elastic
+      ELASTICSEARCH_PASSWORD: ${ES_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elastic:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
 
 networks:
   app-network:
